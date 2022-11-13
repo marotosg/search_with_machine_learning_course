@@ -4,15 +4,23 @@ import xml.etree.ElementTree as ET
 import pandas as pd
 import numpy as np
 import csv
-
-# Useful if you want to perform stemming.
+import re
 import nltk
-stemmer = nltk.stem.PorterStemmer()
 
+
+def normalize(query):
+    query = query.lower()
+    query = re.sub('[^0-9a-zA-Z]+', ' ', query)  
+    query = " ".join(query.split())  
+    query = stemmer.stem(query)
+    return query
+
+stemmer = nltk.stem.PorterStemmer()
 categories_file_name = r'/workspace/datasets/product_data/categories/categories_0001_abcat0010000_to_pcmcat99300050000.xml'
 
 queries_file_name = r'/workspace/datasets/train.csv'
 output_file_name = r'/workspace/datasets/fasttext/labeled_queries.txt'
+cleaned_file_name = r'/workspace/datasets/fasttext/cleaned_queries.txt'
 
 parser = argparse.ArgumentParser(description='Process arguments.')
 general = parser.add_argument_group("general")
@@ -49,8 +57,24 @@ queries_df = pd.read_csv(queries_file_name)[['category', 'query']]
 queries_df = queries_df[queries_df['category'].isin(categories)]
 
 # IMPLEMENT ME: Convert queries to lowercase, and optionally implement other normalization, like stemming.
+queries_df['query'] = queries_df['query'].apply(normalize)
+queries_df.to_csv(cleaned_file_name, header=True, escapechar='\\', quoting=csv.QUOTE_NONE, index=False)
 
+    
 # IMPLEMENT ME: Roll up categories to ancestors to satisfy the minimum number of queries per category.
+hasMoreToDo = True
+while hasMoreToDo:
+    groupByCategory = queries_df.groupby('category').count()
+    groupByCategory = groupByCategory[groupByCategory['query'] < min_queries]
+    if groupByCategory.shape[0] > 0:
+        print("%d cagetories are rolling up" % groupByCategory.shape[0])
+        rollupCategories = groupByCategory.join(parents_df.set_index('category'), how='inner')
+        for index, row in rollupCategories.iterrows():
+            if row['parent']:
+                queries_df.loc[queries_df['category'] == index, 'category'] = row['parent']
+    else:
+        hasMoreToDo = False
+
 
 # Create labels in fastText format.
 queries_df['label'] = '__label__' + queries_df['category']
@@ -59,3 +83,5 @@ queries_df['label'] = '__label__' + queries_df['category']
 queries_df = queries_df[queries_df['category'].isin(categories)]
 queries_df['output'] = queries_df['label'] + ' ' + queries_df['query']
 queries_df[['output']].to_csv(output_file_name, header=False, sep='|', escapechar='\\', quoting=csv.QUOTE_NONE, index=False)
+
+
